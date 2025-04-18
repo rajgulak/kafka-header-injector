@@ -1,0 +1,4 @@
+rootProject.name = 'kafka-header-injector'
+
+include 'injector-lib'
+include 'producer-app' 

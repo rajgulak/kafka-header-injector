@@ -1,0 +1,88 @@
+// Define Spring Boot version to use in manifest
+ext {
+    springBootVersion = '3.2.3' // Should match the version used in your dependencies
+}
+// Configure bootJar task for creating executable JAR
+bootJar {
+    archiveFileName = "kafka-header-injector.jar"
+    
+    // Set duplicates strategy to handle duplicate files
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    
+    manifest {
+        attributes(
+            'Main-Class': 'org.springframework.boot.loader.JarLauncher',
+            'Start-Class': 'com.example.producer.KafkaHeaderInjectorApplication',
+            'Spring-Boot-Version': springBootVersion,
+            'Spring-Boot-Classes': 'BOOT-INF/classes/',
+            'Spring-Boot-Lib': 'BOOT-INF/lib/',
+            'Spring-Boot-Classpath-Index': 'BOOT-INF/classpath.idx',
+            'Spring-Boot-Layers-Index': 'BOOT-INF/layers.idx'
+        )
+    }
+    
+    // Include application properties
+    from("src/main/resources") {
+        into "BOOT-INF/classes"
+    }
+}
+
+// Create task to generate run scripts
+task createScripts {
+    doLast {
+        def scriptsDir = file('src/main/scripts')
+        if (!scriptsDir.exists()) {
+            scriptsDir.mkdirs()
+            
+            // Create run.sh script
+            def runScript = new File(scriptsDir, 'run.sh')
+            runScript.text = '''#!/bin/bash
+java -jar kafka-header-injector.jar --spring.profiles.active=local
+'''
+            runScript.setExecutable(true)
+            
+            // Create run.bat script for Windows
+            def runBatScript = new File(scriptsDir, 'run.bat')
+            runBatScript.text = '''@echo off
+java -jar kafka-header-injector.jar --spring.profiles.active=local
+'''
+        }
+    }
+}
+
+// Add task to create directory with everything needed to run the application
+task createDistribution(type: Copy, dependsOn: [bootJar, createScripts]) {
+    // Set duplicates strategy for this task as well
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    
+    from bootJar.archiveFile
+    from 'src/main/scripts'
+    into "${buildDir}/dist"
+    
+    doLast {
+        file("${buildDir}/dist/run.sh").setExecutable(true)
+        println "Distribution created at ${buildDir}/dist"
+    }
+}
+
+dependencies {
+    implementation project(':injector-lib')
+    
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-thymeleaf'
+    implementation 'org.springframework.kafka:spring-kafka'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'jakarta.annotation:jakarta.annotation-api:2.1.1'
+    
+    // Kafka dependencies
+    implementation 'org.springframework.kafka:spring-kafka-test'
+    implementation 'junit:junit:4.13.2'  // Required for EmbeddedKafkaRule
+    
+    // Test dependencies
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+} 
+
+// Add a task to build and prepare the distribution
+task buildAndDistribute {
+    dependsOn createDistribution
+}
